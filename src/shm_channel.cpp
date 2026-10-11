@@ -8,17 +8,19 @@
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
+#include <cstdlib>
 
 class ShmChannel final : public Channel {
   ShmRing* rings_[2]{};
   int role_ = 0;
   std::string mode_;
+  unsigned spin_limit_ = 2000;
   bool use_futex() const { return mode_ != "shm_spin"; }
   bool hybrid() const { return mode_ == "shm_hybrid"; }
 
   void wait_for(ShmRing* r, bool writing) {
     unsigned spins = 0;
-    const unsigned limit = hybrid() ? 2000U : 0U;
+    const unsigned limit = hybrid() ? spin_limit_ : 0U;
     while (hybrid() && spins++ < limit) {
       r->spin_loops.fetch_add(1, std::memory_order_relaxed);
       uint64_t h = r->head.load(std::memory_order_acquire);
@@ -84,7 +86,11 @@ class ShmChannel final : public Channel {
   }
 
  public:
-  explicit ShmChannel(std::string mode) : mode_(std::move(mode)) {}
+  explicit ShmChannel(std::string mode) : mode_(std::move(mode)) {
+    if (const char* value = std::getenv("IPCB_SPIN_ITERS")) {
+      spin_limit_ = std::stoul(value);
+    }
+  }
   void setup(size_t) override {
     for (int i = 0; i < 2; ++i) {
       std::string name = "/ipcbench_" + std::to_string(getpid()) + "_" +

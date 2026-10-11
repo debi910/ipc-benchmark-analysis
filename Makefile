@@ -16,16 +16,16 @@ build/ipcbench: $(SRC) | build
 	$(CXX) $(CXXFLAGS) -o "$@" $(SRC) $(LDLIBS)
 
 build/test_stats: tests/test_stats.cpp src/stats.cpp | build
-	$(CXX) $(CXXFLAGS) -o "$@" $^ $(LDLIBS)
+	$(CXX) $(CXXFLAGS) -o "$@" "tests/test_stats.cpp" "src/stats.cpp" $(LDLIBS)
 
 build/test_channels: tests/test_channels.cpp $(SRC) | build
-	$(CXX) $(CXXFLAGS) -DIPC_TEST -o "$@" tests/test_channels.cpp $(COMMON) $(LDLIBS)
+	$(CXX) $(CXXFLAGS) -DIPC_TEST -o "$@" "tests/test_channels.cpp" $(COMMON) $(LDLIBS)
 
 build/test_shm_stress: tests/test_shm_stress.cpp $(SRC) | build
-	$(CXX) $(CXXFLAGS) -DIPC_TEST -DIPC_STRESS_MESSAGES=$(STRESS_MESSAGES) -DIPC_STRESS_REPEATS=$(STRESS_REPEATS) -o "$@" tests/test_shm_stress.cpp $(COMMON) $(LDLIBS)
+	$(CXX) $(CXXFLAGS) -DIPC_TEST -DIPC_STRESS_MESSAGES=$(STRESS_MESSAGES) -DIPC_STRESS_REPEATS=$(STRESS_REPEATS) -o "$@" "tests/test_shm_stress.cpp" $(COMMON) $(LDLIBS)
 
 build/test_cleanup: tests/test_cleanup.cpp $(SRC) | build
-	$(CXX) $(CXXFLAGS) -DIPC_TEST -o "$@" tests/test_cleanup.cpp $(COMMON) $(LDLIBS)
+	$(CXX) $(CXXFLAGS) -DIPC_TEST -o "$@" "tests/test_cleanup.cpp" $(COMMON) $(LDLIBS)
 
 venv:
 	python3 -m venv $(VENV)
@@ -40,7 +40,13 @@ check: build/test_stats build/test_channels build/test_shm_stress build/test_cle
 
 check-ci:
 	$(MAKE) clean
-	$(MAKE) STRESS_MESSAGES=100000 check
+	$(MAKE) STRESS_MESSAGES=100000 STRESS_REPEATS=2 check
+
+bench-quick: all venv
+	"$(VENV)/bin/python" "scripts/run_experiments.py" --quick
+
+bench-full: all venv
+	"$(VENV)/bin/python" "scripts/run_experiments.py" --full --resume
 
 stress:
 	$(MAKE) clean

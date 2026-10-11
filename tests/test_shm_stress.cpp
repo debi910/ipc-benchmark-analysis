@@ -1,4 +1,5 @@
 #include "channel.h"
+#include "sysutil.h"
 #include <cassert>
 #include <cstdint>
 #include <iostream>
@@ -31,7 +32,7 @@ static void stress(const char* name) {
       size_t n = 16 + (rng() % (8192 - 15)); c->recv(b.data(), n);
       for (size_t j = 0; j < n; ++j) checksum += b[j];
     }
-    write(control[1], &checksum, sizeof(checksum)); c->teardown(1); _exit(0);
+    write_all(control[1], &checksum, sizeof(checksum)); c->teardown(1); _exit(0);
   }
   close(control[1]); c->attach(0); std::mt19937 rng(7);
   uint64_t expected = 0; std::vector<uint8_t> b(8192, 0x5a);
