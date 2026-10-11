@@ -12,4 +12,7 @@
 
 ## Phase 2
 - Implemented shared-memory rings with spin/futex-labelled strategies and added shared-memory coverage plus cleanup test.
-- Remaining risks: the initial runner is an echo smoke-test rather than the full benchmark CLI; futex/hybrid tuning and persistent shm naming still need hardening in later phases.
+- Hardened shared memory: real `SYS_futex` calls with shared-memory `FUTEX_WAIT`/`FUTEX_WAKE`, spin-only mode has no futex calls, counters cover spin loops and futex operations, and mappings use `shm_open`/`ftruncate`/`mmap`/immediate `shm_unlink`.
+- `make check` uses 200,000 random-size messages x 3 repeats per futex/hybrid mode; channel tests use 16 bytes x 20 and 4096 bytes x 5 per mechanism plus a 1 MiB forced-blocking diagnostic probe; cleanup covers normal teardown and SIGKILL.
+- `make check-ci` uses 100,000 messages x 3 repeats; `make stress` uses 1,000,000 messages x 10 repeats.
+- Remaining risks: the runner is still an echo smoke-test rather than the full benchmark CLI; Phase 3 replaces it.
