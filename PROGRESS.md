@@ -16,3 +16,11 @@
 - `make check` uses 200,000 random-size messages x 3 repeats per futex/hybrid mode; channel tests use 16 bytes x 20 and 4096 bytes x 5 per mechanism plus a 1 MiB forced-blocking diagnostic probe; cleanup covers normal teardown and SIGKILL.
 - `make check-ci` uses 100,000 messages x 3 repeats; `make stress` uses 1,000,000 messages x 10 repeats.
 - Remaining risks: the runner is still an echo smoke-test rather than the full benchmark CLI; Phase 3 replaces it.
+
+## Phase 3
+- Added ping-pong and stream process benchmarks, warm-up, RTT samples, rusage/context-switch metrics, watchdog timeout, CPU pinning, integrity checks, and append-only CSV output.
+- Manual smoke coverage passed for all seven mechanisms: ping-pong at 16 bytes x 3 iterations and stream at 65,536 bytes x 3 iterations, cross-pinned.
+
+## Phase 4
+- Added quoted-path cleanup and experiment orchestration with quick/full/resume/filter/timeout options and WSL2 `system_info.json` capture.
+- Quick matrix: 7 mechanisms x 2 modes x 3 sizes (16, 4096, 65536) x 1 repetition; each ping-pong run uses 20% of its default iterations and stream uses 20% of its default N.

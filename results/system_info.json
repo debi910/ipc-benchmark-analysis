@@ -1,0 +1,10 @@
+{
+  "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64",
+  "distro": "Ubuntu 24.04.3 LTS",
+  "cpu_model": "11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz",
+  "cores": 8,
+  "env": "wsl2",
+  "compiler": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "git_commit": "99a70d3f6265070aab8256a06451bdf267ae4c88",
+  "cpu_governor": "unreadable"
+}
