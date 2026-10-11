@@ -31,7 +31,7 @@ venv:
 	python3 -m venv $(VENV)
 	$(VENV)/bin/pip install -r requirements.txt
 
-check: build/test_stats build/test_channels build/test_shm_stress build/test_cleanup
+check: clean build/test_stats build/test_channels build/test_shm_stress build/test_cleanup
 	"./build/test_stats"
 	"./build/test_channels"
 	"./build/test_shm_stress"
