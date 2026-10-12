@@ -31,3 +31,8 @@
 - `bench-full` now targets a fresh `results/raw.csv` and refuses an existing file unless the orchestrator is explicitly invoked with `--resume`.
 - Expanded channel coverage to sizes 16, 17, 1000, 4096, 65536 (1000 echoes each) and 1048576 (100 echoes), plus a 4 KiB ring with 65536-byte messages x 20 for each shared-memory mode.
 - Added CI configuration, sanity checking, report generation, recommender, and synthetic-data pytest coverage. Full benchmark intentionally not run.
+
+## Pre-Phase 5 hygiene
+- CSV rows now contain trimmed fields and real short Git hashes, with `-dirty` appended when the checkout has uncommitted changes.
+- Regenerated `results/quick_run.csv`, summaries, and figures after the hygiene fix; the sanity checker reports only the expected WSL virtualization warning.
+- The full matrix is estimated at 413 rows: 350 primary runs plus 63 same-core secondary runs. Full execution remains intentionally deferred.

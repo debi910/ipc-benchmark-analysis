@@ -5,14 +5,46 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
+import math
+import warnings
 
 WEIGHTS = {"p99": 0.4, "cpu": 0.4, "ctx": 0.2}
 
 
 def load(path: str) -> pd.DataFrame:
     data = pd.read_csv(path, skipinitialspace=True)
-    data["mech"] = data["mech"].str.strip()
-    return data[data["status"].str.strip() == "ok"].copy()
+    data.columns = data.columns.astype(str).str.strip()
+    for column in data.columns[data.dtypes == "string"].tolist() + data.columns[data.dtypes == "object"].tolist():
+        if column in data:
+            data[column] = data[column].astype(str).str.strip()
+    return data[data["status"].astype(str).str.strip() == "ok"].copy()
+
+
+def interpolate(data: pd.DataFrame, size: int) -> pd.DataFrame:
+    rows = []
+    for mech, group in data.groupby("mech"):
+        group = group.sort_values("size_bytes")
+        if size < group["size_bytes"].min() or size > group["size_bytes"].max():
+            warnings.warn("requested size is outside measured range; clamping to nearest measurement")
+            row = group.iloc[0] if size < group["size_bytes"].min() else group.iloc[-1]
+            rows.append(row)
+            continue
+        exact = group[group["size_bytes"] == size]
+        if not exact.empty:
+            rows.append(exact.iloc[0]); continue
+        lower = group[group["size_bytes"] < size].iloc[-1]
+        upper = group[group["size_bytes"] > size].iloc[0]
+        weight = (math.log(size) - math.log(lower["size_bytes"])) / (
+            math.log(upper["size_bytes"]) - math.log(lower["size_bytes"]))
+        row = lower.copy()
+        row["size_bytes"] = size
+        for column in ("p50_ns", "p99_ns", "mb_per_s", "cpu_user_s", "ctx_per_msg"):
+            if column in row:
+                row[column] = math.exp(math.log(max(lower[column], 1e-12)) +
+                                       weight * (math.log(max(upper[column], 1e-12)) -
+                                                 math.log(max(lower[column], 1e-12))))
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
 def main() -> int:
@@ -26,8 +58,7 @@ def main() -> int:
     args = parser.parse_args()
     data = load(args.input)
     data = data[data["mode"] == args.pattern].copy()
-    data["distance"] = (data["size_bytes"].apply(lambda x: abs(__import__("math").log(max(x, 1)) - __import__("math").log(args.size))))
-    data = data.sort_values("distance").groupby("mech", as_index=False).first()
+    data = interpolate(data, args.size)
     if args.max_p99_us is not None and "p99_ns" in data:
         data = data[data["p99_ns"] <= args.max_p99_us * 1000]
     metric = {"min_latency": "p50_ns", "max_throughput": "mb_per_s",

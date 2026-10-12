@@ -14,6 +14,10 @@ def main() -> int:
     args = parser.parse_args()
     path = Path(args.csv_path)
     rows = list(csv.DictReader(path.open()))
+    for row in rows:
+        for key, value in list(row.items()):
+            if isinstance(value, str):
+                row[key] = value.strip()
     warnings = []
     errors = []
     if not rows:

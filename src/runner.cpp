@@ -17,6 +17,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
+#include <cstdio>
 
 struct Usage { long user_us, sys_us, vol, invol; };
 static Usage usage() {
@@ -30,6 +31,18 @@ struct ChildReport { Usage u{}; int ok = 1; };
 static volatile sig_atomic_t timed_out = 0;
 static volatile sig_atomic_t watched_pid = -1;
 static void alarm_handler(int) { timed_out = 1; if (watched_pid > 0) kill(watched_pid, SIGKILL); }
+static std::string git_commit() {
+  FILE* pipe = popen("git rev-parse --short HEAD", "r");
+  if (!pipe) return "unknown";
+  char buffer[64]{};
+  std::string value = fgets(buffer, sizeof(buffer), pipe) ? buffer : "unknown";
+  pclose(pipe);
+  while (!value.empty() && (value.back() == '\n' || value.back() == '\r')) value.pop_back();
+  FILE* dirty = popen("git status --porcelain", "r");
+  bool is_dirty = dirty && fgets(buffer, sizeof(buffer), dirty);
+  if (dirty) pclose(dirty);
+  return value + (is_dirty ? "-dirty" : "");
+}
 
 void run_echo(Channel& c, size_t size, size_t iters) {
   c.setup(size); int ctl[2]; if (pipe(ctl)) throw std::runtime_error("control pipe");
@@ -66,7 +79,7 @@ static void csv_row(const Options& o, const std::string& status, const std::vect
   if(end==0) { const char* h="timestamp,git_commit,mech,mode,size_bytes,iters,warmup,pin,run_id,chunked,status,mean_ns,p50_ns,p90_ns,p99_ns,p999_ns,min_ns,max_ns,stddev_ns,msgs_per_s,mb_per_s,wall_s,cpu_user_s,cpu_sys_s,cpu_pct,vol_ctx,invol_ctx,ctx_per_msg\n"; write_all(fd,h,std::strlen(h)); }
   double cpu_user=(a.user_us+b.user_us)/1e6, cpu_sys=(a.sys_us+b.sys_us)/1e6;
   double messages=double(o.iters), denom=wall>0?wall:1;
-  std::ostringstream row; row<<std::time(nullptr)<<",-, "<<o.mech<<","<<o.mode<<","<<o.size<<","<<o.iters<<","<<o.warmup<<","<<o.pin<<","<<o.run_id<<","<<(chunked?"true":"false")<<","<<status<<",";
+  std::ostringstream row; row<<std::time(nullptr)<<","<<git_commit()<<","<<o.mech<<","<<o.mode<<","<<o.size<<","<<o.iters<<","<<o.warmup<<","<<o.pin<<","<<o.run_id<<","<<(chunked?"true":"false")<<","<<status<<",";
   if(samples.empty()) row<<",,,,,,,";
   else { row<<mean(samples)<<","<<percentile(samples,.50)<<","<<percentile(samples,.90)<<","<<percentile(samples,.99)<<","<<percentile(samples,.999)<<","<<*std::min_element(samples.begin(),samples.end())<<","<<*std::max_element(samples.begin(),samples.end())<<","<<stddev(samples); }
   row<<","<<(messages/denom)<<","<<(messages*o.size/denom/1048576.0)<<","<<wall<<","<<cpu_user<<","<<cpu_sys<<","<<((cpu_user+cpu_sys)/denom*100)<<","<<(a.vol+b.vol)<<","<<(a.invol+b.invol)<<","<<((a.vol+b.vol)/messages)<<"\n";

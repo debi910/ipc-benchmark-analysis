@@ -15,9 +15,11 @@ def main() -> int:
     parser.add_argument("--output", default="results")
     args = parser.parse_args()
     data = pd.read_csv(args.input, skipinitialspace=True)
-    data.columns = data.columns.str.strip()
-    data["mech"] = data["mech"].str.strip()
-    data = data[data["status"].str.strip() == "ok"]
+    data.columns = data.columns.astype(str).str.strip()
+    for column in data.columns[data.dtypes == "string"].tolist() + data.columns[data.dtypes == "object"].tolist():
+        if column in data:
+            data[column] = data[column].astype(str).str.strip()
+    data = data[data["status"].astype(str).str.strip() == "ok"]
     output = Path(args.output)
     figures = output / "figures"
     figures.mkdir(parents=True, exist_ok=True)
