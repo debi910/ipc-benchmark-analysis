@@ -7,7 +7,10 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <cerrno>
-constexpr size_t SHM_RING_CAPACITY = 262144;
+#ifndef IPCB_RING_CAPACITY
+#define IPCB_RING_CAPACITY 262144
+#endif
+constexpr size_t SHM_RING_CAPACITY = IPCB_RING_CAPACITY;
 struct ShmRing {
   alignas(64) std::atomic<uint64_t> head{0}, tail{0};
   alignas(64) std::atomic<uint32_t> data_seq{0};

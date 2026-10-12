@@ -25,3 +25,9 @@
 ## Phase 4
 - Added quoted-path cleanup and experiment orchestration with quick/full/resume/filter/timeout options and WSL2 `system_info.json` capture.
 - Quick matrix: 7 mechanisms x 2 modes x 3 sizes (16, 4096, 65536) x 1 repetition; each ping-pong run uses 20% of its default iterations and stream uses 20% of its default N.
+
+## Phase 5 preparation
+- Moved the 42-run quick matrix to `results/quick_run.csv`; the two excluded rows were the earlier manual `shm_hybrid` smoke runs (16-byte ping-pong and 4096-byte stream), not additional matrix jobs.
+- `bench-full` now targets a fresh `results/raw.csv` and refuses an existing file unless the orchestrator is explicitly invoked with `--resume`.
+- Expanded channel coverage to sizes 16, 17, 1000, 4096, 65536 (1000 echoes each) and 1048576 (100 echoes), plus a 4 KiB ring with 65536-byte messages x 20 for each shared-memory mode.
+- Added CI configuration, sanity checking, report generation, recommender, and synthetic-data pytest coverage. Full benchmark intentionally not run.

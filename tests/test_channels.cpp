@@ -7,6 +7,18 @@
 #include <thread>
 #include <vector>
 void run_echo(Channel&,size_t,size_t);
+static constexpr size_t NORMAL_MESSAGES =
+#ifdef IPC_CHANNEL_MESSAGES
+  IPC_CHANNEL_MESSAGES;
+#else
+  1000;
+#endif
+static constexpr size_t LARGE_MESSAGES =
+#ifdef IPC_CHANNEL_LARGE_MESSAGES
+  IPC_CHANNEL_LARGE_MESSAGES;
+#else
+  100;
+#endif
 static ChannelDiagnostics blocking_probe(const char* name) {
   auto c = make_channel(name); c->setup(1 << 20);
   pid_t child = fork(); assert(child >= 0);
@@ -19,8 +31,11 @@ static ChannelDiagnostics blocking_probe(const char* name) {
 }
 int main() {
   for (const char* n : {"pipe","fifo","mq","uds","shm_spin","shm_futex","shm_hybrid"}) {
-    auto c = make_channel(n); run_echo(*c,16,20); run_echo(*c,4096,5);
-    std::cout << n << ": PASS (16x20, 4096x5)\n";
+    for (size_t size : {size_t(16), size_t(17), size_t(1000), size_t(4096), size_t(65536), size_t(1048576)}) {
+      auto c = make_channel(n);
+      run_echo(*c, size, size == 1048576 ? LARGE_MESSAGES : NORMAL_MESSAGES);
+    }
+    std::cout << n << ": PASS (16,17,1000,4096,65536 x 1000; 1048576 x 100)\n";
   }
   auto spin = blocking_probe("shm_spin");
   auto futex = blocking_probe("shm_futex");

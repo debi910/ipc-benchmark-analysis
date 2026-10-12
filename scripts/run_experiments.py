@@ -44,9 +44,15 @@ def main() -> int:
     group.add_argument("--quick", action="store_true")
     group.add_argument("--full", action="store_true")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--output", default="results/raw.csv")
     parser.add_argument("--only-mech", choices=MECHANISMS)
     parser.add_argument("--timeout", type=int, default=60)
     args = parser.parse_args()
+    csv = Path(args.output)
+    if not csv.is_absolute():
+        csv = ROOT / csv
+    if args.full and csv.exists() and csv.stat().st_size > 0 and not args.resume:
+        parser.error(f"{csv} exists; pass --resume to append/resume")
     quick = args.quick or not args.full
     sizes = [16, 4096, 65536] if quick else SIZES
     reps = 1 if quick else 5
@@ -55,7 +61,8 @@ def main() -> int:
     (results / "logs").mkdir(parents=True, exist_ok=True)
     (results / "figures").mkdir(parents=True, exist_ok=True)
     results.joinpath("system_info.json").write_text(json.dumps(system_info(), indent=2) + "\n")
-    csv = results / "raw.csv"
+    if not args.resume and csv.exists():
+        csv.unlink()
     existing = csv.read_text(errors="replace") if args.resume and csv.exists() else ""
     jobs = [(m, mode, size, rep) for m in MECHANISMS if not args.only_mech or m == args.only_mech
             for mode in ("pingpong", "stream") for size in sizes for rep in range(reps)]

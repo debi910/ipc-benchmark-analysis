@@ -67,7 +67,7 @@ static void csv_row(const Options& o, const std::string& status, const std::vect
   double cpu_user=(a.user_us+b.user_us)/1e6, cpu_sys=(a.sys_us+b.sys_us)/1e6;
   double messages=double(o.iters), denom=wall>0?wall:1;
   std::ostringstream row; row<<std::time(nullptr)<<",-, "<<o.mech<<","<<o.mode<<","<<o.size<<","<<o.iters<<","<<o.warmup<<","<<o.pin<<","<<o.run_id<<","<<(chunked?"true":"false")<<","<<status<<",";
-  if(samples.empty()) row<<",,,,,,,,";
+  if(samples.empty()) row<<",,,,,,,";
   else { row<<mean(samples)<<","<<percentile(samples,.50)<<","<<percentile(samples,.90)<<","<<percentile(samples,.99)<<","<<percentile(samples,.999)<<","<<*std::min_element(samples.begin(),samples.end())<<","<<*std::max_element(samples.begin(),samples.end())<<","<<stddev(samples); }
   row<<","<<(messages/denom)<<","<<(messages*o.size/denom/1048576.0)<<","<<wall<<","<<cpu_user<<","<<cpu_sys<<","<<((cpu_user+cpu_sys)/denom*100)<<","<<(a.vol+b.vol)<<","<<(a.invol+b.invol)<<","<<((a.vol+b.vol)/messages)<<"\n";
   std::string s=row.str(); write_all(fd,s.data(),s.size()); flock(fd,LOCK_UN); close(fd);

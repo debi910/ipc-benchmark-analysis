@@ -5,6 +5,6 @@
   "cores": 8,
   "env": "wsl2",
   "compiler": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
-  "git_commit": "99a70d3f6265070aab8256a06451bdf267ae4c88",
+  "git_commit": "4aec812f4fcd83d4dcb650c2a7b678bb6aef6bf4",
   "cpu_governor": "unreadable"
 }
