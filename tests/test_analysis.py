@@ -42,6 +42,38 @@ def run_recommend(path, goal, extra=()):
     )
 
 
+def make_balanced_fixture(path):
+    medians = {
+        4096: [
+            ("shm_hybrid", 1482.0, 2129.08, 5991.90, 0.00010),
+            ("shm_spin", 1491.0, 2168.05, 6273.65, 0.00000),
+            ("pipe", 36756.0, 78435.60, 38380.75, 2.19355),
+            ("shm_futex", 39252.0, 78833.00, 39236.15, 2.19125),
+            ("mq", 41596.0, 80566.10, 41062.10, 2.19255),
+            ("fifo", 42128.5, 90878.60, 43293.50, 2.19360),
+            ("uds", 34549.0, 86672.00, 41463.40, 2.72450),
+        ],
+        65536: [
+            ("shm_spin", 12974.0, 22321.3, 67694.00, 0.00000),
+            ("shm_hybrid", 13701.0, 28824.6, 77567.30, 0.00050),
+            ("shm_futex", 54429.0, 114572.0, 80514.30, 2.19445),
+            ("pipe", 71027.5, 136734.0, 97130.45, 2.19690),
+            ("fifo", 72784.0, 142303.0, 98542.95, 2.19725),
+            ("mq", 76313.0, 166826.0, 128263.95, 2.22800),
+            ("uds", 86154.5, 179698.0, 130692.20, 4.41775),
+        ],
+    }
+    rows = []
+    for size, mechanisms in medians.items():
+        for mech, p50, p99, cpu_ns, ctx in mechanisms:
+            rows.append(dict(zip(CSV_COLUMNS, [
+                1, "-", mech, "pingpong", size, 1, 0, "cross", 1, False, "ok",
+                p50, p50, p50, p99, p99, p50, p99, 0, 1, 1, 1,
+                cpu_ns / 1e9, 0, 1, 0, 0, ctx,
+            ])))
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
 def test_report_and_whitespace_robust_loading(tmp_path):
     csv_path = tmp_path / "synthetic.csv"
     make_csv(csv_path)
@@ -99,3 +131,45 @@ def test_exclude_removes_mechanisms(tmp_path):
     make_csv(csv_path)
     result = run_recommend(csv_path, "min_latency", ("--exclude", "shm_futex"))
     assert "shm_futex" not in result.stdout
+
+
+def test_balanced_dominance_and_real_median_rankings(tmp_path):
+    csv_path = tmp_path / "balanced.csv"
+    make_balanced_fixture(csv_path)
+    for size, expected in (
+        (65536, ["shm_spin", "shm_hybrid", "shm_futex", "pipe", "fifo", "mq", "uds"]),
+        (4096, ["shm_hybrid", "shm_spin", "pipe", "shm_futex", "mq", "fifo", "uds"]),
+    ):
+        result = subprocess.run(
+            [sys.executable, "analysis/recommend.py", "--input", str(csv_path),
+             "--size", str(size), "--pattern", "pingpong", "--goal", "balanced",
+             "--top", "7"],
+            cwd=ROOT, check=True, capture_output=True, text=True,
+        )
+        rows = [line.split()[0] for line in result.stdout.splitlines()
+                if line.strip().startswith(tuple(expected))]
+        assert rows == expected
+        assert "score" in result.stdout
+
+    dominance = tmp_path / "dominance.csv"
+    make_balanced_fixture(dominance)
+    data = pd.read_csv(dominance)
+    data = data[(data["size_bytes"] == 4096) & data["mech"].isin(["pipe", "uds"])]
+    data.to_csv(dominance, index=False)
+    output = subprocess.run(
+        [sys.executable, "analysis/recommend.py", "--input", str(dominance),
+         "--size", "4096", "--pattern", "pingpong", "--goal", "balanced"],
+        cwd=ROOT, check=True, capture_output=True, text=True,
+    ).stdout
+    assert "pipe" in output.splitlines()[-2]
+
+
+def test_exact_measured_size_does_not_mix_neighbours(tmp_path):
+    csv_path = tmp_path / "exact.csv"
+    make_csv(csv_path, sizes=(1024, 2048, 4096))
+    data = pd.read_csv(csv_path)
+    data.loc[data["size_bytes"] == 2048, "p50_ns"] = 7
+    data.to_csv(csv_path, index=False)
+    result = run_recommend(csv_path, "min_latency", ("--top", "3", "--size", "2048"))
+    assert "2048" in result.stdout
+    assert "7.0" in result.stdout

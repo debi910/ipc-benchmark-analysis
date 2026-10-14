@@ -9,6 +9,7 @@ import math
 import warnings
 
 WEIGHTS = {"p99": 0.4, "cpu": 0.4, "ctx": 0.2}
+BALANCED_COMPONENTS = ("p99_ns", "cpu_ns_per_msg", "ctx_per_msg")
 
 
 def load(path: str) -> pd.DataFrame:
@@ -22,6 +23,10 @@ def load(path: str) -> pd.DataFrame:
 
 def aggregate(data: pd.DataFrame) -> pd.DataFrame:
     data = data.copy()
+    for column in ("size_bytes", "iters", "p50_ns", "p99_ns", "cpu_user_s",
+                   "cpu_sys_s", "ctx_per_msg", "mb_per_s"):
+        if column in data:
+            data[column] = pd.to_numeric(data[column], errors="coerce")
     data["cpu_ns_per_msg"] = (
         (data["cpu_user_s"] + data["cpu_sys_s"]) * 1e9 / data["iters"]
     )
@@ -56,6 +61,36 @@ def interpolate(data: pd.DataFrame, size: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def balanced_rank(data: pd.DataFrame) -> pd.DataFrame:
+    """Return rows ranked by the documented min-max balanced score."""
+    data = data.dropna(subset=list(BALANCED_COMPONENTS)).copy()
+    for component in BALANCED_COMPONENTS:
+        low = data[component].min()
+        high = data[component].max()
+        data[component + "_n"] = (
+            (data[component] - low) / (high - low) if high != low else 0.0
+        )
+    data["score"] = (
+        WEIGHTS["p99"] * data["p99_ns_n"]
+        + WEIGHTS["cpu"] * data["cpu_ns_per_msg_n"]
+        + WEIGHTS["ctx"] * data["ctx_per_msg_n"]
+    )
+    return data.sort_values(["score", "mech"], kind="stable").reset_index(drop=True)
+
+
+def rank(data: pd.DataFrame, goal: str) -> pd.DataFrame:
+    if goal == "balanced":
+        return balanced_rank(data)
+    metric = {
+        "min_latency": "p50_ns",
+        "max_throughput": "mb_per_s",
+        "min_cpu": "cpu_ns_per_msg",
+    }[goal]
+    ranked = data.dropna(subset=[metric]).copy()
+    ranked["score"] = ranked[metric] if goal != "max_throughput" else -ranked[metric]
+    return ranked.sort_values(["score", "mech"], kind="stable").reset_index(drop=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default="results/raw.csv")
@@ -77,19 +112,9 @@ def main() -> int:
             for pattern in ("pingpong", "stream"):
                 for goal in ("min_latency", "max_throughput", "min_cpu", "balanced"):
                     subset = interpolate(data[data["mode"] == pattern], int(size),)
-                    metric = {"min_latency": "p50_ns", "max_throughput": "mb_per_s",
-                              "min_cpu": "cpu_ns_per_msg", "balanced": "p50_ns"}[goal]
-                    if goal == "balanced":
-                        for col in ("p99_ns", "cpu_user_s", "ctx_per_msg"):
-                            low, high = subset[col].min(), subset[col].max()
-                            subset[col + "_n"] = (subset[col] - low) / (high - low or 1)
-                        subset["score"] = (WEIGHTS["p99"] * subset["p99_ns_n"] +
-                                           WEIGHTS["cpu"] * subset["cpu_user_s_n"] +
-                                           WEIGHTS["ctx"] * subset["ctx_per_msg_n"])
-                        winner = subset.sort_values("score").iloc[0]
-                    else:
-                        winner = subset.sort_values(metric, ascending=goal != "max_throughput").iloc[0]
-                    rows.append((size, pattern, goal, winner["mech"]))
+                    ranked = rank(subset, goal)
+                    rows.append((size, pattern, goal,
+                                 ranked.iloc[0]["mech"] if not ranked.empty else "unavailable"))
         text = ["# Recommendation table", "", "| Size | Pattern | Goal | Recommended mechanism |", "|---:|---|---|---|"]
         text += [f"| {s} | {p} | {g} | {m} |" for s, p, g, m in rows]
         Path("results/recommendation_table.md").write_text("\n".join(text) + "\n")
@@ -106,23 +131,16 @@ def main() -> int:
     data = interpolate(data, args.size)
     if args.max_p99_us is not None and "p99_ns" in data:
         data = data[data["p99_ns"] <= args.max_p99_us * 1000]
-    metric = {"min_latency": "p50_ns", "max_throughput": "mb_per_s",
-              "min_cpu": "cpu_ns_per_msg", "balanced": "p50_ns"}[args.goal]
-    if args.goal == "balanced":
-        for col in ("p99_ns", "cpu_user_s", "ctx_per_msg"):
-            low, high = data[col].min(), data[col].max()
-            data[col + "_n"] = (data[col] - low) / (high - low or 1)
-        data["score"] = (WEIGHTS["p99"] * data["p99_ns_n"] +
-                         WEIGHTS["cpu"] * data["cpu_user_s_n"] +
-                         WEIGHTS["ctx"] * data["ctx_per_msg_n"])
-        data = data.sort_values("score")
-    else:
-        data = data.sort_values(metric, ascending=args.goal != "max_throughput")
+    data = rank(data, args.goal)
+    if data.empty:
+        parser.error("no complete rows are available for this goal and selection")
     print("Measured-machine recommendation (WSL2 results; not a universal ranking)")
     print("Caveat: CPU ranking is measured under back-to-back load; spin variants keep "
           "approximately two cores busy (measured cpu_pct approximately 194%) even "
           "at low message rates.")
-    print(data.head(args.top)[["mech", "size_bytes", metric]].to_string(index=False))
+    columns = ["mech", "size_bytes", "p50_ns", "p99_ns", "cpu_ns_per_msg",
+               "ctx_per_msg", "score"]
+    print(data.head(args.top)[columns].to_string(index=False))
     return 0
 
 

@@ -16,27 +16,36 @@ table in `results/recommendation_table.md`, and the seven figures in
 
 ## Recommender examples
 
-Cross-core ping-pong at 4096 bytes, goal `min_cpu`:
+Cross-core ping-pong at 4096 bytes, goal `min_cpu` (all seven ranked rows):
 
 ```text
-mech       size_bytes  cpu_ns_per_msg
-shm_hybrid 4096        5991.90 ns/message
-shm_spin   4096        6273.65 ns/message
-pipe       4096        38380.75 ns/message
+      mech  size_bytes  p50_ns   p99_ns  cpu_ns_per_msg  ctx_per_msg    score
+shm_hybrid        4096  1482.0  2129.08         5991.90      0.00010  5991.90
+  shm_spin        4096  1491.0  2168.05         6273.65      0.00000  6273.65
+      pipe        4096 36756.0 78435.60        38380.75      2.19355 38380.75
+ shm_futex        4096 39252.0 78833.00        39236.15      2.19125 39236.15
+        mq        4096 41596.0 80566.10        41062.10      2.19255 41062.10
+        uds        4096 34549.0 86672.00        41463.40      2.72450 41463.40
+      fifo        4096 42128.5 90878.60        43293.50      2.19360 43293.50
 ```
 
-Cross-core ping-pong at 65536 bytes, goal `balanced`:
+Cross-core ping-pong at 65536 bytes, goal `balanced` (all seven ranked rows):
 
 ```text
-mech       size_bytes  p50_ns
-shm_spin   65536       15065.5
-pipe       65536       71027.5
-fifo       65536       72784.0
+      mech  size_bytes  p50_ns   p99_ns  cpu_ns_per_msg  ctx_per_msg    score
+  shm_spin       65536 12974.0  22321.3        67694.00      0.00000  0.000000
+shm_hybrid       65536 13701.0  28824.6        77567.30      0.00050  0.079241
+ shm_futex       65536 54429.0 114572.0        80514.30      2.19445  0.415219
+      pipe       65536 71027.5 136734.0        97130.45      2.19690  0.577161
+      fifo       65536 72784.0 142303.0        98542.95      2.19725  0.600300
+        mq       65536 76313.0 166826.0       128263.95      2.22800  0.852732
+        uds       65536 86154.5 179698.0       130692.20      4.41775  1.000000
 ```
 
-The balanced score uses p99, CPU/msg, and context switches; the displayed p50
-is a readable ranking column, not the complete score. Recommendations use the
-existing measured CSV and are not benchmark reruns.
+The balanced score uses min-max-normalised p99, CPU/msg, and context switches
+with weights 0.4, 0.4, and 0.2. The output prints every component and score
+so rankings are auditable. Recommendations use the existing measured CSV and
+are not benchmark reruns.
 
 The generated summary reports every quoted latency and CPU median with its
 five-repetition min-max range. For example, at 16 bytes `shm_hybrid` is
