@@ -30,18 +30,22 @@ build/test_shm_stress: tests/test_shm_stress.cpp $(SRC) | build
 build/test_cleanup: tests/test_cleanup.cpp $(SRC) | build
 	$(CXX) $(CXXFLAGS) -DIPC_TEST -o "$@" "tests/test_cleanup.cpp" $(COMMON) $(LDLIBS)
 
+build/test_timeout: tests/test_timeout.cpp build/ipcbench | build
+	$(CXX) $(CXXFLAGS) -DIPC_TEST -o "$@" "tests/test_timeout.cpp" $(LDLIBS)
+
 venv:
 	python3 -m venv $(VENV)
 	$(VENV)/bin/pip install -r requirements.txt
 
 check: CHANNEL_MESSAGES := 1000
 check: CHANNEL_LARGE_MESSAGES := 100
-check: clean build/test_stats build/test_channels build/test_tiny_ring build/test_shm_stress build/test_cleanup
+check: clean build/ipcbench build/test_stats build/test_channels build/test_tiny_ring build/test_shm_stress build/test_cleanup build/test_timeout
 	"./build/test_stats"
 	"./build/test_channels"
 	"./build/test_tiny_ring"
 	"./build/test_shm_stress"
 	"./build/test_cleanup"
+	"./build/test_timeout"
 	@! grep -RIl $$'\r' --include='Makefile' --include='*.sh' . >/dev/null
 
 check-ci:

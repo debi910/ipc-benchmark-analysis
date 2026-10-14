@@ -18,6 +18,9 @@
 #include <unistd.h>
 #include <vector>
 #include <cstdio>
+#include <csetjmp>
+#include <chrono>
+#include <thread>
 
 struct Usage { long user_us, sys_us, vol, invol; };
 static Usage usage() {
@@ -28,9 +31,14 @@ static Usage usage() {
 }
 static Usage delta(Usage a, Usage b) { return {b.user_us-a.user_us,b.sys_us-a.sys_us,b.vol-a.vol,b.invol-a.invol}; }
 struct ChildReport { Usage u{}; int ok = 1; };
-static volatile sig_atomic_t timed_out = 0;
+volatile sig_atomic_t ipcbench_timed_out = 0;
 static volatile sig_atomic_t watched_pid = -1;
-static void alarm_handler(int) { timed_out = 1; if (watched_pid > 0) kill(watched_pid, SIGKILL); }
+static sigjmp_buf timeout_jump;
+static void alarm_handler(int) {
+  ipcbench_timed_out = 1;
+  if (watched_pid > 0) kill(watched_pid, SIGKILL);
+  siglongjmp(timeout_jump, 1);
+}
 static std::string git_commit() {
   FILE* pipe = popen("git rev-parse --short HEAD", "r");
   if (!pipe) return "unknown";
@@ -59,6 +67,7 @@ struct Options {
   std::string mech="pipe", mode="pingpong", pin="none", csv="results/raw.csv";
   size_t size=16, iters=0, warmup=0, run_id=0, timeout=60, spin_iters=2000;
   int cpu_a=-1, cpu_b=-1;
+  bool no_same_cap=false;
 };
 static uint64_t checksum(size_t seq, size_t size) {
   return 0x9e3779b97f4a7c15ULL ^ uint64_t(seq) ^ uint64_t(size);
@@ -92,7 +101,6 @@ int run_benchmark(const Options& o) {
   int cpu_b=o.cpu_b>=0?o.cpu_b:(cpus.size()>1?cpus[1]:cpu_a);
   auto c=make_channel(o.mech); c->setup(o.size); int ctl[2]; if(socketpair(AF_UNIX,SOCK_STREAM,0,ctl)) throw std::runtime_error("control socketpair");
   pid_t pid=fork(); if(pid<0) throw std::runtime_error("fork"); watched_pid=pid;
-  signal(SIGALRM,alarm_handler); alarm(unsigned(o.timeout));
   if(!pid) {
     close(ctl[0]); c->attach(1); if(o.pin=="same"||o.pin=="cross") pin_cpu(o.pin=="same"?cpu_a:cpu_b);
     Usage before=usage(); std::vector<uint8_t>b(o.size); bool ok=true;
@@ -101,14 +109,30 @@ int run_benchmark(const Options& o) {
     Usage after=usage(); ChildReport report{delta(before,after),ok?1:0}; write_all(ctl[1],&report,sizeof(report)); c->teardown(1); _exit(ok?0:3);
   }
   close(ctl[1]); c->attach(0); if(o.pin=="same"||o.pin=="cross") pin_cpu(cpu_a);
+  signal(SIGALRM,alarm_handler);
+  pid_t watchdog_pid = fork();
+  if (watchdog_pid == 0) {
+    sleep(unsigned(o.timeout));
+    kill(pid, SIGKILL);
+    kill(getppid(), SIGALRM);
+    _exit(124);
+  }
   Usage before=usage(); std::vector<uint8_t>b(o.size),out(o.size); std::vector<uint64_t> samples;
   if(o.mode=="pingpong") samples.reserve(o.iters);
   size_t total=o.iters+o.warmup; bool ok=true; uint64_t start=now_ns();
-  for(size_t i=0;i<total&&!timed_out;i++){fill(b,i);uint64_t t=now_ns();c->send(b.data(),b.size());if(o.mode=="pingpong"){c->recv(out.data(),out.size());if(!valid(out,i))ok=false;if(i>=o.warmup)samples.push_back(now_ns()-t);}}
-  if(o.mode=="stream"&&!timed_out){ char ack; read_all(ctl[0],&ack,1); }
-  uint64_t end=now_ns(); Usage after=usage(); ChildReport report{}; if(!timed_out) read_all(ctl[0],&report,sizeof(report));
+  if (sigsetjmp(timeout_jump, 1) == 0) try {
+    for(size_t i=0;i<total&&!ipcbench_timed_out;i++){fill(b,i);uint64_t t=now_ns();c->send(b.data(),b.size());if(o.mode=="pingpong"){c->recv(out.data(),out.size());if(!valid(out,i))ok=false;if(i>=o.warmup)samples.push_back(now_ns()-t);}}
+    if(o.mode=="stream"&&!ipcbench_timed_out){ char ack; read_all(ctl[0],&ack,1); }
+  } catch (const std::exception&) {
+    ipcbench_timed_out = 1;
+  }
+  uint64_t end=now_ns(); Usage after=usage(); ChildReport report{}; if(!ipcbench_timed_out) read_all(ctl[0],&report,sizeof(report));
   alarm(0); watched_pid=-1; int st=0; waitpid(pid,&st,0); c->teardown(0); close(ctl[0]);
-  std::string status=timed_out?"timeout":(!ok||!report.ok?"integrity_error":"ok");
+  if (watchdog_pid > 0) {
+    kill(watchdog_pid, SIGTERM);
+    waitpid(watchdog_pid, nullptr, 0);
+  }
+  std::string status=ipcbench_timed_out?"timeout":(!ok||!report.ok?"integrity_error":"ok");
   bool is_chunked = c->chunked(o.size);
   csv_row(o,status,samples,(end-start)/1e9,delta(before,after),report.u,is_chunked);
   return status=="ok"?0:1;

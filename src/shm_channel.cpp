@@ -9,6 +9,9 @@
 #include <string>
 #include <unistd.h>
 #include <cstdlib>
+#include <csignal>
+
+extern volatile sig_atomic_t ipcbench_timed_out;
 
 class ShmChannel final : public Channel {
   ShmRing* rings_[2]{};
@@ -22,6 +25,7 @@ class ShmChannel final : public Channel {
     unsigned spins = 0;
     const unsigned limit = hybrid() ? spin_limit_ : 0U;
     while (hybrid() && spins++ < limit) {
+      if (ipcbench_timed_out) throw std::runtime_error("benchmark timeout");
       r->spin_loops.fetch_add(1, std::memory_order_relaxed);
       uint64_t h = r->head.load(std::memory_order_acquire);
       uint64_t t = r->tail.load(std::memory_order_acquire);
@@ -29,6 +33,7 @@ class ShmChannel final : public Channel {
       cpu_relax();
     }
     if (!use_futex()) {
+      if (ipcbench_timed_out) throw std::runtime_error("benchmark timeout");
       r->spin_loops.fetch_add(1, std::memory_order_relaxed);
       cpu_relax();
       return;
@@ -53,6 +58,7 @@ class ShmChannel final : public Channel {
     auto* dst = static_cast<uint8_t*>(out);
     auto* src = static_cast<const uint8_t*>(in);
     while (n) {
+      if (ipcbench_timed_out) throw std::runtime_error("benchmark timeout");
       uint64_t h = r->head.load(std::memory_order_acquire);
       uint64_t t = r->tail.load(std::memory_order_acquire);
       uint64_t available = writing ? SHM_RING_CAPACITY - (h - t) : h - t;

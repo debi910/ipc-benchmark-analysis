@@ -36,3 +36,10 @@
 - CSV rows now contain trimmed fields and real short Git hashes, with `-dirty` appended when the checkout has uncommitted changes.
 - Regenerated `results/quick_run.csv`, summaries, and figures after the hygiene fix; the sanity checker reports only the expected WSL virtualization warning.
 - The full matrix is estimated at 413 rows: 350 primary runs plus 63 same-core secondary runs. Full execution remains intentionally deferred.
+
+## Same-core hardening
+- For `shm_spin --pin same`, normal runs cap the requested workload at 500 iterations and 50 warm-up iterations; the CSV records those effective counts. `shm_hybrid` and all other mechanisms retain their requested defaults and were checked with a 120-second external guard.
+- Same-core default probe results (16-byte ping-pong, requested 20,000 iterations and 2,000 warm-up, except the spin cap): pipe 1.64 s, FIFO 1.65 s, mq 1.70 s, UDS 2.01 s, `shm_futex` 1.70 s, `shm_hybrid` 8.49 s, and capped `shm_spin` 7.33 s; every row reported `status=ok`.
+- Added a real supervisor watchdog regression for the uncapped diagnostic case (`shm_spin`, same CPU, 20,000 + 2,000, timeout 2 s). It kills the child, interrupts the parent, writes `status=timeout`, and leaves no `ipcbench*` objects or orphan benchmark process.
+- `make check` passes with 1,000 messages at sizes 16, 17, 1,000, 4,096, and 65,536 bytes, 100 messages at 1 MiB, 20 tiny-ring messages per shared-memory mode, 200,000 stress messages x 3 repeats, normal/SIGKILL cleanup for all 7 channels, and the timeout regression. `make check-ci` passes with 100 messages (20 at 1 MiB) and 100,000 stress messages x 2 repeats.
+- The full estimate remains 413 rows (350 primary + 63 same-core secondary). The same-core `shm_spin` secondary workload is now 500 iterations + 50 warm-up per row instead of 20,000 + 2,000, reducing the prior estimate by approximately 4.2 seconds to about 365 seconds (6.1 minutes). This includes approximately 13.4 seconds for the 1 MiB primary cases; estimate arithmetic is 365 s total / 413 rows, with the capped spin rows substituted for their former uncapped cost.
