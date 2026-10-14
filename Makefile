@@ -69,6 +69,12 @@ report: venv
 recommend: venv
 	"$(VENV)/bin/python" "analysis/recommend.py" --input "results/raw.csv" $(ARGS)
 
+dashboard: venv
+	"$(VENV)/bin/python" "analysis/make_dashboard.py" --input "results/raw.csv" --output "docs/index.html" --chart "vendor/chart.umd.min.js"
+
+demo: all
+	bash "scripts/demo.sh"
+
 docker-build:
 	docker build -t ipc-benchmark-analysis .
 
