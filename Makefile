@@ -57,6 +57,10 @@ bench-quick: all venv
 
 bench-full: all venv
 	"$(VENV)/bin/python" "scripts/run_experiments.py" --full --output "results/raw.csv"
+	"$(VENV)/bin/python" "scripts/run_experiments.py" --secondary --resume --output "results/raw.csv"
+
+bench-secondary: all venv
+	"$(VENV)/bin/python" "scripts/run_experiments.py" --secondary --resume --output "results/raw.csv"
 
 stress:
 	$(MAKE) clean

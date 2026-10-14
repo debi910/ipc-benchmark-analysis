@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv as csvlib
 import json
 import os
 import random
@@ -14,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MECHANISMS = ["pipe", "fifo", "mq", "uds", "shm_spin", "shm_futex", "shm_hybrid"]
 SIZES = [16, 256, 4096, 65536, 1048576]
+SECONDARY_SIZES = [16, 4096, 65536]
 
 
 def output(command: list[str]) -> str:
@@ -43,49 +45,74 @@ def main() -> int:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--quick", action="store_true")
     group.add_argument("--full", action="store_true")
+    group.add_argument("--secondary", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--output", default="results/raw.csv")
     parser.add_argument("--only-mech", choices=MECHANISMS)
     parser.add_argument("--timeout", type=int, default=60)
+    parser.add_argument("--log-dir", default="results/logs")
     args = parser.parse_args()
     csv = Path(args.output)
     if not csv.is_absolute():
         csv = ROOT / csv
+    if args.secondary and (not csv.exists() or csv.stat().st_size == 0):
+        parser.error(f"{csv} must be an existing primary CSV for --secondary")
     if args.full and csv.exists() and csv.stat().st_size > 0 and not args.resume:
         parser.error(f"{csv} exists; pass --resume to append/resume")
-    quick = args.quick or not args.full
-    sizes = [16, 4096, 65536] if quick else SIZES
-    reps = 1 if quick else 5
-    fraction = 0.2 if quick else 1.0
+    secondary = args.secondary
+    quick = args.quick or (not args.full and not secondary)
+    sizes = SECONDARY_SIZES if secondary else ([16, 4096, 65536] if quick else SIZES)
+    reps = 3 if secondary else (1 if quick else 5)
+    fraction = 1.0 if secondary else (0.2 if quick else 1.0)
     results = ROOT / "results"
-    (results / "logs").mkdir(parents=True, exist_ok=True)
+    log_dir = Path(args.log_dir)
+    if not log_dir.is_absolute():
+        log_dir = ROOT / log_dir
+    log_dir.mkdir(parents=True, exist_ok=True)
     (results / "figures").mkdir(parents=True, exist_ok=True)
-    results.joinpath("system_info.json").write_text(json.dumps(system_info(), indent=2) + "\n")
+    if not secondary:
+        results.joinpath("system_info.json").write_text(json.dumps(system_info(), indent=2) + "\n")
     if not args.resume and csv.exists():
         csv.unlink()
-    existing = csv.read_text(errors="replace") if args.resume and csv.exists() else ""
-    jobs = [(m, mode, size, rep) for m in MECHANISMS if not args.only_mech or m == args.only_mech
-            for mode in ("pingpong", "stream") for size in sizes for rep in range(reps)]
+    existing_rows = []
+    if csv.exists():
+        with csv.open(newline="", errors="replace") as stream:
+            existing_rows = list(csvlib.DictReader(stream))
+    used_ids = [int(row["run_id"]) for row in existing_rows if row.get("run_id", "").isdigit()]
+    next_run_id = max(used_ids, default=0) + 1
+    existing_counts = {}
+    for row in existing_rows:
+        key = (row.get("mech", "").strip(), row.get("mode", "").strip(),
+               row.get("size_bytes", "").strip(), row.get("pin", "").strip())
+        existing_counts[key] = existing_counts.get(key, 0) + 1
+    seen_jobs = {}
+    jobs = [(m, "pingpong", size, rep) for m in MECHANISMS if not args.only_mech or m == args.only_mech
+            for size in sizes for rep in range(reps)] if secondary else [
+                (m, mode, size, rep) for m in MECHANISMS if not args.only_mech or m == args.only_mech
+                for mode in ("pingpong", "stream") for size in sizes for rep in range(reps)]
     random.Random(20261012).shuffle(jobs)
     print("WSL2/virtualised run: close heavy applications and keep the laptop plugged in.")
-    for run_id, (mech, mode, size, rep) in enumerate(jobs, 1):
-        marker = f",{mech},{mode},{size},"
-        if args.resume and marker in existing:
+    for job_index, (mech, mode, size, rep) in enumerate(jobs):
+        key = (mech, mode, str(size), "same" if secondary else "cross")
+        seen_jobs[key] = seen_jobs.get(key, 0) + 1
+        if args.resume and seen_jobs[key] <= existing_counts.get(key, 0):
             continue
+        run_id = next_run_id
+        next_run_id += 1
         subprocess.run(["bash", str(ROOT / "scripts" / "cleanup.sh")], cwd=ROOT, check=True)
         default = (20000 if size <= 65536 else 2000) if mode == "pingpong" else max(2000, min(200000, 268435456 // size))
         iters = max(1, int(default * fraction))
         warmup = iters // 10 if mode == "pingpong" else 0
         command = [str(ROOT / "build" / "ipcbench"), "--mech", mech, "--mode", mode,
                    "--size", str(size), "--iters", str(iters), "--warmup", str(warmup),
-                   "--pin", "cross", "--run-id", str(run_id), "--csv", str(csv),
+                   "--pin", "same" if secondary else "cross", "--run-id", str(run_id), "--csv", str(csv),
                    "--timeout", str(args.timeout)]
         started = time.monotonic()
         completed = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
-        log = results / "logs" / f"run_{run_id:04d}.log"
+        log = log_dir / f"run_{run_id:04d}.log"
         log.write_text(f"$ {' '.join(command)}\n{completed.stdout}\n")
-        print(f"[{run_id}/{len(jobs)}] {mech:10s} {mode:8s} {size:7d}B rep={rep + 1} "
+        print(f"[{job_index + 1}/{len(jobs)}] {mech:10s} {mode:8s} {size:7d}B rep={rep + 1} "
               f"rc={completed.returncode} {time.monotonic() - started:.2f}s", flush=True)
     return 0
 
