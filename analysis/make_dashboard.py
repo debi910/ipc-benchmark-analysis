@@ -56,7 +56,10 @@ def recommendations(data: pd.DataFrame) -> dict:
             for goal in ("min_latency", "max_throughput", "min_cpu", "balanced"):
                 ranked = recommend.rank(recommend.interpolate(subset, int(size)), goal)
                 result[mode][str(int(size))][goal] = [
-                    {"mech": str(row.mech), "score": float(row.score)}
+                    {"mech": str(row.mech), "score": float(row.score),
+                     "p50_ns": float(row.p50_ns), "p99_ns": float(row.p99_ns),
+                     "cpu_ns_per_msg": float(row.cpu_ns_per_msg),
+                     "ctx_per_msg": float(row.ctx_per_msg)}
                     for _, row in ranked.head(3).iterrows()
                 ]
     return result

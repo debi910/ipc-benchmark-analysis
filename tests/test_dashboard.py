@@ -112,7 +112,13 @@ def test_dashboard_renders_without_console_errors(tmp_path):
         page.wait_for_function("document.querySelector('#commit').textContent.length > 0")
         assert page.locator("#commit").inner_text()
         assert page.locator("#rows").inner_text() == "413"
-        assert page.locator("#tradeSize option").count() > 0
+        assert page.locator("#tradeSize button").count() > 0
+        for section in ("overview", "findings", "explorer", "tradeoff", "tail",
+                        "race", "recommend", "method", "table"):
+            assert page.locator(f"#{section}").count() == 1
+        assert page.locator("#checks .chip").count() == 7
+        assert page.locator("#ladder .ladder-row").count() == 7
+        assert page.locator("#recOut .rec-item").count() == 3
         assert page.locator("#explorerChart").evaluate(
             "canvas => canvas.toDataURL('image/png').length > 1000")
         assert not errors
