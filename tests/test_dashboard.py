@@ -1,11 +1,13 @@
 import json
 import random
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -16,6 +18,22 @@ def build_dashboard(path):
          "--output", str(path), "--chart", "vendor/chart.umd.min.js"],
         cwd=ROOT, check=True,
     )
+
+
+def node_command():
+    node = shutil.which("node")
+    if node:
+        return [node]
+    windows_node = Path("/mnt/c/Program Files/nodejs/node.exe")
+    if windows_node.exists():
+        return [str(windows_node)]
+    return None
+
+
+def windows_path(path, node):
+    if node[0].endswith(".exe") and Path("/mnt/c").exists():
+        return subprocess.check_output(["wslpath", "-w", str(path)], text=True).strip()
+    return str(path)
 
 
 def embedded(path, name):
@@ -58,3 +76,44 @@ def test_dashboard_row_count_and_random_medians(tmp_path):
             expected_values = [expected.loc[key, field], values.min(), values.max()]
             for actual, expected_value in zip(actuals, expected_values):
                 assert (pd.isna(actual) and pd.isna(expected_value)) or actual == expected_value
+
+
+def test_inline_scripts_pass_node_check(tmp_path):
+    node = node_command()
+    if node is None:
+        pytest.skip("node is not installed; install Node.js to run inline syntax checks")
+    output = tmp_path / "index.html"
+    build_dashboard(output)
+    scripts = re.findall(r"<script(?: [^>]*)?>(.*?)</script>", output.read_text(), re.S)
+    assert scripts
+    for index, script in enumerate(scripts, 1):
+        script_path = tmp_path / f"dashboard-script-{index}.js"
+        script_path.write_text(script)
+        result = subprocess.run(
+            node + ["--check", windows_path(script_path, node)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+
+def test_dashboard_renders_without_console_errors(tmp_path):
+    playwright = pytest.importorskip("playwright.sync_api",
+                                     reason="Playwright is not installed")
+    output = tmp_path / "index.html"
+    build_dashboard(output)
+    errors = []
+    with playwright.sync_playwright() as api:
+        browser = api.chromium.launch()
+        page = browser.new_page()
+        page.on("console", lambda message: errors.append(
+            f"console {message.type}: {message.text}") if message.type == "error" else None)
+        page.on("pageerror", lambda error: errors.append(f"pageerror: {error}"))
+        page.goto(output.as_uri(), wait_until="load")
+        page.wait_for_function("document.querySelector('#commit').textContent.length > 0")
+        assert page.locator("#commit").inner_text()
+        assert page.locator("#rows").inner_text() == "413"
+        assert page.locator("#tradeSize option").count() > 0
+        assert page.locator("#explorerChart").evaluate(
+            "canvas => canvas.toDataURL('image/png').length > 1000")
+        assert not errors
+        browser.close()

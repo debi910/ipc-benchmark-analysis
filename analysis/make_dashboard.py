@@ -99,6 +99,8 @@ def main() -> int:
         "__RECS__": json.dumps(recommendations(data), separators=(",", ":")),
     }
     for marker, value in replacements.items():
+        if marker == "__CHART__":
+            value = json.dumps(value, separators=(",", ":"))
         template = template.replace(marker, value.replace("</script>", "<\\/script>"))
     Path(args.output).write_text(template)
     return 0
