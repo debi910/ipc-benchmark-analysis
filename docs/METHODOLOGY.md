@@ -25,6 +25,14 @@ whereas `shm_hybrid` and the other same-core mechanisms use the default 20,000
 iterations and 2,000 warm-up. Analyses must therefore compare same-core values
 with this iteration-count difference visible, not treat them as identical loads.
 
+All three shared-memory variants use the same ring layout and producer/consumer
+protocol; only the waiting policy differs (polling, futex, or hybrid). The
+diagnostic counters are incremented inside the poll/wait loop, so they measure
+the actual synchronization path rather than a separate instrumentation pass.
+The `-dirty` suffix in `git_commit` comes from the result writer observing
+uncommitted working-tree changes while benchmark result files are being
+generated.
+
 Threats to validity include WSL2 virtualization and background activity,
 unreadable CPU-governor state, frequency scaling, hyperthread placement, one
 physical machine, `getrusage` granularity, message-queue fragmentation and

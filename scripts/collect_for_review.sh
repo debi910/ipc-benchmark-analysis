@@ -10,6 +10,8 @@ cp "$root/results/raw.csv" "$tmp/results/"
 cp "$root/results/system_info.json" "$tmp/results/"
 cp "$root/results/summary.md" "$tmp/results/"
 cp -r "$root/results/figures" "$tmp/results/"
+cp "$root/README.md" "$tmp/"
+cp -r "$root/docs" "$tmp/"
 mkdir -p "$tmp/results/logs"
 for file in "$root"/results/logs/*; do
   [ -f "$file" ] || continue

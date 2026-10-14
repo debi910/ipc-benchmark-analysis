@@ -14,10 +14,14 @@ written from scratch; it is not copied from the reference repositories listed in
 
 The completed run contains 413 successful rows: 350 cross-core primary rows and
 63 same-core secondary rows. At 16-byte cross-core ping-pong, median p50 RTT was
-311 ns for `shm_hybrid`, 367 ns for `shm_spin`, and 43,844 ns for pipe. At
-1 MiB cross-core streaming, median throughput was 2,212.17 MB/s for `shm_spin`,
-1,616.25 MB/s for `shm_hybrid`, and 619.33 MB/s for pipe. These are observations
-from one machine, not universal performance claims.
+311 ns (163-379 ns) for `shm_hybrid`, 367 ns (338-399 ns) for `shm_spin`, and
+43,844 ns (36,021-48,455 ns) for pipe. At 1 MiB cross-core streaming, median
+throughput was 2,212.17 MB/s (1,755.43-2,281.31) for `shm_spin`, 1,616.25
+MB/s (1,386.64-1,837.06) for `shm_hybrid`, and 619.33 MB/s (554.78-630.23)
+for pipe. These are observations from one machine, not universal performance
+claims. At 16-byte cross-core ping-pong, `shm_hybrid` and `shm_spin` are
+statistically indistinguishable with five repetitions and overlapping min-max
+ranges.
 
 ## WSL2 disclaimer
 
@@ -89,8 +93,11 @@ primitive is new.
 The study uses one WSL2 host, five primary sizes, three same-core sizes, and
 five primary repetitions. `getrusage` and virtualization make CPU and scheduling
 metrics noisy. Message-queue limits, ring capacity, pinning, and scheduler
-state can change the ranking. See `docs/METHODOLOGY.md` and
-`docs/RESULTS.md`.
+state can change the ranking. Spin CPU cost at low message rates is not measured
+by this back-to-back benchmark, and the spin window is an iteration count whose
+wall-time meaning depends on the CPU. Same-core results are hypotheses under
+the WSL2/virtualized environment, not portable guarantees. See
+`docs/METHODOLOGY.md` and `docs/RESULTS.md`.
 
 Code is released under the repository licence. External projects and the paper
 listed in `docs/RELATED_WORK.md` remain the property of their respective

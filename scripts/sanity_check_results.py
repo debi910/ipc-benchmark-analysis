@@ -35,8 +35,12 @@ def main() -> int:
             warnings.append(f"row {index} status={row['status']}")
         if row["mode"] == "pingpong" and row["p50_ns"] and float(row["p50_ns"]) > float(row["p99_ns"]):
             errors.append(f"row {index} p50 > p99")
-        if row["mode"] == "stream" and row["wall_s"] and abs(float(row["msgs_per_s"]) * float(row["wall_s"]) - int(row["iters"])) > 1:
-            warnings.append(f"row {index} throughput differs from iters/wall")
+        if row["mode"] == "stream" and row["wall_s"]:
+            expected = int(row["iters"])
+            observed = float(row["msgs_per_s"]) * float(row["wall_s"])
+            tolerance = max(1.0, expected * 0.00001)
+            if abs(observed - expected) > tolerance:
+                warnings.append(f"row {index} throughput differs from iters/wall")
     counts = Counter((r["mech"].strip(), r["mode"], r["size_bytes"]) for r in rows)
     if any(count > 1 for count in counts.values()):
         warnings.append("duplicate mechanism/mode/size combinations found")

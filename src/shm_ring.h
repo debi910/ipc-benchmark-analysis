@@ -7,6 +7,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <cerrno>
+#include <time.h>
 #ifndef IPCB_RING_CAPACITY
 #define IPCB_RING_CAPACITY 262144
 #endif
@@ -21,8 +22,9 @@ struct ShmRing {
   alignas(64) uint8_t data[SHM_RING_CAPACITY];
 };
 inline int futex_wait(std::atomic<uint32_t>* p, uint32_t v) {
+  const timespec timeout{0, 100000000};
   return syscall(SYS_futex, reinterpret_cast<uint32_t*>(p), FUTEX_WAIT, v,
-                 nullptr, nullptr, 0);
+                 &timeout, nullptr, 0);
 }
 inline int futex_wake(std::atomic<uint32_t>* p) {
   return syscall(SYS_futex, reinterpret_cast<uint32_t*>(p), FUTEX_WAKE, 1,

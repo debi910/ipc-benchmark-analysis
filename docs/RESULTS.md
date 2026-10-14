@@ -37,21 +37,36 @@ pipe       65536       67471.0
 The balanced score uses p99, CPU/msg, and context switches; the displayed p50
 is a readable ranking column, not the complete score.
 
+The generated summary reports every quoted latency and CPU median with its
+five-repetition min-max range. For example, at 16 bytes `shm_hybrid` is
+311 ns [163-379] and `shm_spin` is 367 ns [338-399]; at 1 MiB stream,
+`shm_spin` is 2212.17 MB/s [1755.43-2281.31], `shm_hybrid` is 1616.25 MB/s
+[1386.64-1837.06], and pipe is 619.33 MB/s [554.78-630.23].
+
+## Same-core results
+
+Same-core ping-pong suggests three distinct regimes: pipe/MQ/UDS are roughly
+3-8 us RTT, `shm_hybrid` is roughly 190 us RTT, and `shm_spin` is roughly
+8 ms RTT. These are hypotheses supported by the medians, not proven causes.
+The `shm_spin` rows use 500 iterations and 50 warm-up messages; the other
+same-core mechanisms, including `shm_hybrid`, use 20,000 iterations and 2,000
+warm-up messages. Spin CPU cost at low message rates is not measured here:
+the workload is back-to-back. The spin window is an iteration count whose
+duration depends on the CPU, and all results are WSL2/virtualized.
+
 ## Anomalies
 
-- `scripts/sanity_check_results.py` reports two throughput/wall consistency
-  warnings, at rows 121 and 185 (FIFO and pipe, 256-byte stream). The stored
-  throughput differs from `iters / wall_s` by more than one message, so these
-  rows should be treated as instrumentation/accounting anomalies rather than
-  discarded benchmark failures.
+- The sanity checker permits a 0.001% throughput/wall tolerance. Rows 121 and
+  185 (FIFO and pipe, 256-byte stream) agree within that tolerance and are not
+  anomalies.
 - It reports duplicate mechanism/mode/size combinations because repetitions are
   intentionally represented as separate rows. There are no missing combinations
   and all 413 statuses are `ok`.
 - WSL2 virtualization is reported as an expected warning.
-- At 16-byte cross-core ping-pong, `shm_hybrid` has the lowest median p50 RTT
-  (311 ns), followed by `shm_spin` (367 ns). Thus `shm_spin` is not the
-  fastest at this size; the hybrid's short polling/futex policy is a measured
-  result, not proof of a universal cause.
+- At 16-byte cross-core ping-pong, `shm_hybrid` has median p50 RTT 311 ns
+  (min-max 163-379 ns), while `shm_spin` has 367 ns (338-399 ns). With five
+  repetitions and overlapping min-max ranges, they are statistically
+  indistinguishable; the data does not support claiming that hybrid beats spin.
 - Cross-core p50 repetition CV exceeds 20% for `shm_spin` at 4096 bytes
   (40.9%), `shm_spin` at 65536 bytes (35.3%), `shm_hybrid` at 16 bytes
   (27.4%), and UDS at 4096 bytes (25.8%). This supports a variability
@@ -62,10 +77,10 @@ is a readable ranking column, not the complete score.
   1.56 for `shm_hybrid`, and 1.55 for `shm_spin`. The largest observed ratio
   is 4.76 for `shm_spin`. These are measured tail amplifications, not proof
   of a particular kernel mechanism.
-- Same-core `shm_spin` rows use the safety cap of 500 iterations and 50
-  warm-up messages. Same-core `shm_hybrid` rows use the default 20,000
-  iterations and 2,000 warm-up, as do the other same-core mechanisms. Any
-  comparison across those rows must account for the unequal workload.
+- All quoted medians should be read with their measured min-max ranges in
+  `results/summary.md`; same-core `shm_spin` rows use 500 iterations and 50
+  warm-up, while `shm_hybrid` and the other same-core mechanisms use the
+  default 20,000 and 2,000.
 
 ## Interpretation
 

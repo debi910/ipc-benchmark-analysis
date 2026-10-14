@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.ticker import NullFormatter
 
 MECHANISMS = ["pipe", "fifo", "mq", "uds", "shm_spin", "shm_futex", "shm_hybrid"]
 SHM = {"shm_spin", "shm_futex", "shm_hybrid"}
@@ -58,6 +59,7 @@ def main() -> int:
     figures.mkdir(parents=True, exist_ok=True)
     data = load(args.input)
     med = median_rows(data)
+    cross_ping_raw = data[(data["mode"] == "pingpong") & (data["pin"] == "cross")].copy()
     cross_ping = med[(med["mode"] == "pingpong") & (med["pin"] == "cross")]
     cross_stream = med[(med["mode"] == "stream") & (med["pin"] == "cross")]
 
@@ -67,20 +69,30 @@ def main() -> int:
               "Cross-core stream throughput")
     cpu = cross_ping.copy()
     cpu["cpu_ns_per_msg"] = (cpu["cpu_user_s"] + cpu["cpu_sys_s"]) * 1e9 / cpu["iters"]
-    line_plot(cpu, "size_bytes", "cpu_ns_per_msg", "CPU time per message (ns)",
-              figures / "cpu_cost_vs_size.png", "Cross-core CPU cost", log_y=True)
+    line_plot(cpu, "size_bytes", "cpu_ns_per_msg",
+              "CPU time per message at saturation (ns)",
+              figures / "cpu_cost_vs_size.png",
+              "Cross-core CPU cost at saturation (back-to-back messages)", log_y=True)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for mech in MECHANISMS:
-        group = cross_ping[cross_ping["mech"] == mech].copy()
-        group["cpu_ns_per_msg"] = (group["cpu_user_s"] + group["cpu_sys_s"]) * 1e9 / group["iters"]
-        ax.plot(group["p50_ns"], group["cpu_ns_per_msg"], marker="o", linewidth=1.5,
-                label=mech)
-    ax.set_xscale("log"); ax.set_yscale("log")
-    ax.set_xlabel("p50 RTT (ns)"); ax.set_ylabel("CPU time per message (ns)")
-    ax.set_title("Latency–CPU trade-off, cross-core ping-pong")
-    ax.grid(True, which="both", alpha=0.25); ax.legend(ncol=2, fontsize=8)
-    fig.tight_layout(); fig.savefig(figures / "latency_vs_cpu_tradeoff.png", dpi=150); plt.close(fig)
+    trade = cross_ping[cross_ping["size_bytes"].isin([16, 4096, 65536])]
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.8), sharex=False, sharey=False)
+    for ax, size in zip(axes, [16, 4096, 65536]):
+        group = trade[trade["size_bytes"] == size]
+        for mech in MECHANISMS:
+            point = group[group["mech"] == mech]
+            if not point.empty:
+                ax.scatter(point["p50_ns"], point["cpu_pct"], s=55, label=mech)
+        ax.set_xscale("log"); ax.set_yscale("log")
+        ax.set_title(f"{size} bytes")
+        ax.set_xlabel("p50 RTT (ns)")
+        ax.set_ylabel("CPU utilisation (%)")
+        ax.grid(True, which="both", alpha=0.25)
+        ax.xaxis.set_minor_formatter(NullFormatter())
+    axes[0].legend(ncol=2, fontsize=7)
+    fig.suptitle("Latency–CPU utilisation trade-off, cross-core ping-pong")
+    fig.tight_layout()
+    fig.savefig(figures / "latency_vs_cpu_tradeoff.png", dpi=150)
+    plt.close(fig)
 
     tail = cross_ping.copy()
     tail["tail_ratio"] = tail["p99_ns"] / tail["p50_ns"]
@@ -121,30 +133,31 @@ def main() -> int:
     lines = ["# Measured summary", "", "All values are medians over repetitions; source: `results/raw.csv`.", ""]
     for size in sorted(cross_ping["size_bytes"].unique()):
         lines += [f"## Cross-core ping-pong at {int(size)} bytes", "",
-                  "| Mechanism | p50 RTT (ns) | p99 RTT (ns) | CPU/msg (ns) | ctx/msg |",
-                  "|---|---:|---:|---:|---:|"]
+                  "| Mechanism | p50 RTT median [min-max] (ns) | p99 RTT median [min-max] (ns) | CPU/msg median [min-max] (ns) |",
+                  "|---|---:|---:|---:|"]
         rows = cross_ping[cross_ping["size_bytes"] == size].copy()
         rows["cpu_ns"] = (rows["cpu_user_s"] + rows["cpu_sys_s"]) * 1e9 / rows["iters"]
         for _, row in rows.sort_values("p50_ns").iterrows():
-            lines.append(f"| {row.mech} | {row.p50_ns:.1f} | {row.p99_ns:.1f} | {row.cpu_ns:.1f} | {row.ctx_per_msg:.3f} |")
+            raw = cross_ping_raw[(cross_ping_raw["mech"] == row.mech) &
+                                 (cross_ping_raw["size_bytes"] == size)].copy()
+            raw["cpu_ns"] = (raw["cpu_user_s"] + raw["cpu_sys_s"]) * 1e9 / raw["iters"]
+            def span(column: str) -> str:
+                return f"{row[column]:.1f} [{raw[column].min():.1f}-{raw[column].max():.1f}]"
+            lines.append(f"| {row.mech} | {span('p50_ns')} | {span('p99_ns')} | {span('cpu_ns')} |")
         lines.append("")
     lines += ["## Crossover analysis", "",
-              "Smallest measured stream size where a shared-memory variant reaches at least 20% more throughput than both pipe and UDS:"]
-    for mech in sorted(SHM):
-        found = []
-        for size in sorted(cross_stream["size_bytes"].unique()):
-            row = cross_stream[(cross_stream.mech == mech) & (cross_stream.size_bytes == size)]
-            pipe = cross_stream[(cross_stream.mech == "pipe") & (cross_stream.size_bytes == size)]
-            uds = cross_stream[(cross_stream.mech == "uds") & (cross_stream.size_bytes == size)]
-            if not row.empty and not pipe.empty and not uds.empty:
-                value = row.iloc[0].mb_per_s
-                pipe_value = pipe.iloc[0].mb_per_s
-                uds_value = uds.iloc[0].mb_per_s
-            else:
-                value = pipe_value = uds_value = 0
-            if not row.empty and not pipe.empty and not uds.empty and value >= 1.2 * pipe_value and value >= 1.2 * uds_value:
-                found.append(int(size))
-        lines.append(f"- `{mech}`: {min(found) if found else 'none found'}")
+              "No crossover was observed: shared memory leads pipe at every measured size.",
+              "The ratios below are median shared-memory throughput divided by median pipe throughput; all are above 1 at the smallest measured size."]
+    lines += ["", "| Size (bytes) | shm_spin / pipe | shm_futex / pipe | shm_hybrid / pipe |",
+              "|---:|---:|---:|---:|"]
+    for size in sorted(cross_stream["size_bytes"].unique()):
+        values = {}
+        for mech in ["pipe", "shm_spin", "shm_futex", "shm_hybrid"]:
+            values[mech] = cross_stream[(cross_stream["mech"] == mech) &
+                                        (cross_stream["size_bytes"] == size)].iloc[0]["mb_per_s"]
+        lines.append(f"| {int(size)} | {values['shm_spin']/values['pipe']:.3f} | "
+                     f"{values['shm_futex']/values['pipe']:.3f} | "
+                     f"{values['shm_hybrid']/values['pipe']:.3f} |")
     lines.append("")
     (output / "summary.md").write_text("\n".join(lines) + "\n")
     return 0

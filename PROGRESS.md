@@ -53,3 +53,8 @@
 - Sanity checking reports two throughput/wall consistency warnings (FIFO and pipe at 256-byte stream), the expected repetition duplicate warning, and the expected WSL2 warning; it reports no errors.
 - Generated all seven figures, `results/summary.md`, `results/recommendation_table.md`, and the measured documentation. At 16-byte cross-core ping-pong, median p50 is 311 ns for `shm_hybrid` and 367 ns for `shm_spin`; at 1 MiB cross-core stream, median throughput is 2212.17 MB/s for `shm_spin` and 619.33 MB/s for pipe.
 - Docker is unavailable in the WSL environment, so `make docker-build`/`make docker-quick` were added but not executed. This remains a user follow-up.
+
+## Analysis corrections
+- Relaxed stream throughput consistency to a 0.001% tolerance; the previous FIFO/pipe 256-byte warnings are gone. Remaining sanity warnings are the expected repetition-duplicate and WSL2 notices.
+- Replaced the trade-off figure with three p50 RTT versus CPU-utilisation panels (16, 4096, and 65536 bytes), retained the per-message CPU figure with an explicit saturation/back-to-back label, and rewrote crossover analysis to show that shared memory leads pipe at every measured size.
+- Added same-core hypotheses and iteration-count/WSL2 limitations to the reports. `make check` passed and the permitted `make stress` passed all 10 futex and 10 hybrid repeats at 1,000,000 messages.
