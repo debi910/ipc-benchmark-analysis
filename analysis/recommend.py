@@ -20,6 +20,15 @@ def load(path: str) -> pd.DataFrame:
     return data[data["status"].astype(str).str.strip() == "ok"].copy()
 
 
+def aggregate(data: pd.DataFrame) -> pd.DataFrame:
+    data = data.copy()
+    data["cpu_ns_per_msg"] = (
+        (data["cpu_user_s"] + data["cpu_sys_s"]) * 1e9 / data["iters"]
+    )
+    keys = ["mech", "mode", "pin", "size_bytes"]
+    return data.groupby(keys, as_index=False).median(numeric_only=True)
+
+
 def interpolate(data: pd.DataFrame, size: int) -> pd.DataFrame:
     rows = []
     for mech, group in data.groupby("mech"):
@@ -38,7 +47,7 @@ def interpolate(data: pd.DataFrame, size: int) -> pd.DataFrame:
             math.log(upper["size_bytes"]) - math.log(lower["size_bytes"]))
         row = lower.copy()
         row["size_bytes"] = size
-        for column in ("p50_ns", "p99_ns", "mb_per_s", "cpu_user_s", "ctx_per_msg"):
+        for column in ("p50_ns", "p99_ns", "mb_per_s", "cpu_ns_per_msg", "ctx_per_msg"):
             if column in row:
                 row[column] = math.exp(math.log(max(lower[column], 1e-12)) +
                                        weight * (math.log(max(upper[column], 1e-12)) -
@@ -57,17 +66,19 @@ def main() -> int:
     parser.add_argument("--max-p99-us", type=float)
     parser.add_argument("--pin", choices=["cross", "same"], default="cross")
     parser.add_argument("--top", type=int, default=3)
+    parser.add_argument("--exclude", default="")
     args = parser.parse_args()
     if args.export_rules:
         data = load(args.input)
         data = data[data["pin"] == "cross"]
+        data = aggregate(data)
         rows = []
         for size in sorted(data["size_bytes"].unique()):
             for pattern in ("pingpong", "stream"):
                 for goal in ("min_latency", "max_throughput", "min_cpu", "balanced"):
                     subset = interpolate(data[data["mode"] == pattern], int(size),)
                     metric = {"min_latency": "p50_ns", "max_throughput": "mb_per_s",
-                              "min_cpu": "cpu_user_s", "balanced": "p50_ns"}[goal]
+                              "min_cpu": "cpu_ns_per_msg", "balanced": "p50_ns"}[goal]
                     if goal == "balanced":
                         for col in ("p99_ns", "cpu_user_s", "ctx_per_msg"):
                             low, high = subset[col].min(), subset[col].max()
@@ -88,11 +99,15 @@ def main() -> int:
     data = load(args.input)
     data = data[data["mode"] == args.pattern].copy()
     data = data[data["pin"] == args.pin].copy()
+    excluded = {item.strip() for item in args.exclude.split(",") if item.strip()}
+    if excluded:
+        data = data[~data["mech"].isin(excluded)]
+    data = aggregate(data)
     data = interpolate(data, args.size)
     if args.max_p99_us is not None and "p99_ns" in data:
         data = data[data["p99_ns"] <= args.max_p99_us * 1000]
     metric = {"min_latency": "p50_ns", "max_throughput": "mb_per_s",
-              "min_cpu": "cpu_user_s", "balanced": "p50_ns"}[args.goal]
+              "min_cpu": "cpu_ns_per_msg", "balanced": "p50_ns"}[args.goal]
     if args.goal == "balanced":
         for col in ("p99_ns", "cpu_user_s", "ctx_per_msg"):
             low, high = data[col].min(), data[col].max()
@@ -104,6 +119,9 @@ def main() -> int:
     else:
         data = data.sort_values(metric, ascending=args.goal != "max_throughput")
     print("Measured-machine recommendation (WSL2 results; not a universal ranking)")
+    print("Caveat: CPU ranking is measured under back-to-back load; spin variants keep "
+          "approximately two cores busy (measured cpu_pct approximately 194%) even "
+          "at low message rates.")
     print(data.head(args.top)[["mech", "size_bytes", metric]].to_string(index=False))
     return 0
 

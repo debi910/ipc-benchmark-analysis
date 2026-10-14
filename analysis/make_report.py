@@ -82,11 +82,12 @@ def main() -> int:
             point = group[group["mech"] == mech]
             if not point.empty:
                 ax.scatter(point["p50_ns"], point["cpu_pct"], s=55, label=mech)
-        ax.set_xscale("log"); ax.set_yscale("log")
+        ax.set_xscale("log"); ax.set_ylim(0, 200)
         ax.set_title(f"{size} bytes")
         ax.set_xlabel("p50 RTT (ns)")
         ax.set_ylabel("CPU utilisation (%)")
         ax.grid(True, which="both", alpha=0.25)
+        ax.tick_params(axis="x", which="both", labelbottom=True)
         ax.xaxis.set_minor_formatter(NullFormatter())
     axes[0].legend(ncol=2, fontsize=7)
     fig.suptitle("Latency–CPU utilisation trade-off, cross-core ping-pong")

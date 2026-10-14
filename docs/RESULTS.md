@@ -19,10 +19,10 @@ table in `results/recommendation_table.md`, and the seven figures in
 Cross-core ping-pong at 4096 bytes, goal `min_cpu`:
 
 ```text
-mech       size_bytes  cpu_user_s
-mq         4096        0.040131
-pipe       4096        0.061885
-uds        4096        0.065497
+mech       size_bytes  cpu_ns_per_msg
+shm_hybrid 4096        5991.90 ns/message
+shm_spin   4096        6273.65 ns/message
+pipe       4096        38380.75 ns/message
 ```
 
 Cross-core ping-pong at 65536 bytes, goal `balanced`:
@@ -30,12 +30,13 @@ Cross-core ping-pong at 65536 bytes, goal `balanced`:
 ```text
 mech       size_bytes  p50_ns
 shm_spin   65536       15065.5
-mq         65536       62726.0
-pipe       65536       67471.0
+pipe       65536       71027.5
+fifo       65536       72784.0
 ```
 
 The balanced score uses p99, CPU/msg, and context switches; the displayed p50
-is a readable ranking column, not the complete score.
+is a readable ranking column, not the complete score. Recommendations use the
+existing measured CSV and are not benchmark reruns.
 
 The generated summary reports every quoted latency and CPU median with its
 five-repetition min-max range. For example, at 16 bytes `shm_hybrid` is

@@ -35,6 +35,15 @@ the value mismatch causes the futex call to return immediately; this is the
 key lost-wake avoidance rule. The loop always rechecks the ring predicate after
 returning.
 
+More specifically, the consumer reads the futex word, sets
+`consumer_waiting`, re-checks `head`, and only then calls `futex_wait`. The
+producer publishes `head`, bumps the futex word, and reads the waiting flag
+before deciding whether to wake. A producer wake racing with the consumer's
+registration is safe because the kernel compares the futex word with the
+consumer's previously read value: a changed value makes `FUTEX_WAIT` return
+immediately. The flag covers the notification decision, so the read/check/wait
+sequence cannot lose a wakeup.
+
 `shm_spin` only polls and calls no futex. `shm_futex` waits directly. `shm_hybrid`
 polls for the configured spin window and then falls back to the same shared
 futex protocol. The tests assert these distinctions with diagnostic counters.
@@ -45,3 +54,7 @@ Names are unlinked immediately where possible. Normal teardown and SIGKILL
 cleanup tests inspect `/dev/shm`, FIFO paths, and `/dev/mqueue`. The runner has
 a 60-second supervisor watchdog; on timeout it kills the child, interrupts the
 parent, writes a `timeout` row, and tears down the mapping.
+
+The shared-memory stress test passed 10 repeats of 1,000,000 messages for both
+`shm_futex` and `shm_hybrid`, supporting the implementation's wakeup and
+wrap-around behavior under sustained load.

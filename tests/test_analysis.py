@@ -79,3 +79,23 @@ def test_p99_filter(tmp_path):
     make_csv(csv_path)
     result = run_recommend(csv_path, "max_throughput", ("--max-p99-us", "0.5"))
     assert "uds" not in result.stdout
+
+
+def test_min_cpu_uses_user_and_system_cpu_per_message(tmp_path):
+    csv_path = tmp_path / "cpu.csv"
+    rows = []
+    for mech, user, system in (("pipe", 1.0, 0.0), ("uds", 0.0, 0.5)):
+        rows.append(dict(zip(CSV_COLUMNS, [
+            1, "-", mech, "pingpong", 4096, 10, 1, "cross", 1, False, "ok",
+            1, 1, 1, 2, 2, 1, 2, 1, 1, 1, 1, user, system, 1, 0, 0, 0,
+        ])))
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+    result = run_recommend(csv_path, "min_cpu")
+    assert "uds" in result.stdout
+
+
+def test_exclude_removes_mechanisms(tmp_path):
+    csv_path = tmp_path / "exclude.csv"
+    make_csv(csv_path)
+    result = run_recommend(csv_path, "min_latency", ("--exclude", "shm_futex"))
+    assert "shm_futex" not in result.stdout

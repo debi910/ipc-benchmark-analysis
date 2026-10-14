@@ -41,7 +41,7 @@ make venv
 make check
 make bench-quick
 make report
-python3 analysis/recommend.py --size 4096 --pattern pingpong --goal min_cpu
+make recommend ARGS="--size 4096 --pattern pingpong --goal min_cpu"
 ```
 
 `make bench-full` creates a fresh `results/raw.csv`, runs the 350-row cross-core
@@ -50,14 +50,16 @@ existing full CSV unless the underlying script is invoked with `--resume`.
 To add only the secondary matrix to an existing primary run, use
 `make bench-secondary`.
 
-## Docker
+## Docker (untested)
 
 ```sh
 make docker-build
 make docker-quick
 ```
 
-The Docker image provides the compiler and Python analysis environment. IPC
+The Docker image is intended to provide the compiler and Python analysis
+environment, but these targets are untested in the current WSL2 environment.
+IPC
 results from a container are not directly comparable with the WSL2 run.
 
 ## Repository layout

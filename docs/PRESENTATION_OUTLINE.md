@@ -17,5 +17,9 @@
    explicitly reported; hybrid retains the default workload.
 9. **Recommendations** — Show the two measured recommender examples and
    emphasize that they are machine-specific heuristics.
-10. **Limitations and future work** — Bare-metal replication, more hosts,
-    more repetitions, and power measurements.
+10. **Live demo** — Run `make report` and `make recommend ARGS="--size 4096
+    --pattern pingpong --goal min_cpu"` against the committed dataset, then
+    open the trade-off figure and explain the selected mechanism.
+11. **Limitations and next steps** — Bare-metal replication, more hosts, more
+    repetitions, and power measurements. Add a rate-paced test to measure idle
+    spin cost rather than only back-to-back saturation cost.

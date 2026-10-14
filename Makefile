@@ -66,6 +66,9 @@ report: venv
 	"$(VENV)/bin/python" "analysis/make_report.py" --input "results/raw.csv" --output "results"
 	"$(VENV)/bin/python" "analysis/recommend.py" --export-rules --input "results/raw.csv"
 
+recommend: venv
+	"$(VENV)/bin/python" "analysis/recommend.py" --input "results/raw.csv" $(ARGS)
+
 docker-build:
 	docker build -t ipc-benchmark-analysis .
 
