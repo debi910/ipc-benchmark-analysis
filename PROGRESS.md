@@ -47,3 +47,9 @@
 ## Secondary matrix completion
 - Added `make bench-secondary` and folded the same target into `make bench-full` after the primary run. Secondary execution appends only to an existing `results/raw.csv`, starts run IDs above the current maximum, and runs only ping-pong at 16, 4,096, and 65,536 bytes, `pin=same`, 3 repetitions, with the 60-second watchdog and normal `shm_spin` cap.
 - Validated against a `/tmp` copy of the 350-row primary CSV: the output contains 414 lines (413 data rows), 63 same-core rows, run IDs through 413, 9 capped `shm_spin` rows, and no timeout rows. `results/raw.csv` was not used or modified by the test.
+
+## Phases 5-7 results
+- The completed full dataset contains 413/413 `status=ok` rows: 350 cross-core primary rows plus 63 same-core rows. No benchmark was rerun while generating the analysis artifacts.
+- Sanity checking reports two throughput/wall consistency warnings (FIFO and pipe at 256-byte stream), the expected repetition duplicate warning, and the expected WSL2 warning; it reports no errors.
+- Generated all seven figures, `results/summary.md`, `results/recommendation_table.md`, and the measured documentation. At 16-byte cross-core ping-pong, median p50 is 311 ns for `shm_hybrid` and 367 ns for `shm_spin`; at 1 MiB cross-core stream, median throughput is 2212.17 MB/s for `shm_spin` and 619.33 MB/s for pipe.
+- Docker is unavailable in the WSL environment, so `make docker-build`/`make docker-quick` were added but not executed. This remains a user follow-up.

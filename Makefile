@@ -46,7 +46,7 @@ check: clean build/ipcbench build/test_stats build/test_channels build/test_tiny
 	"./build/test_shm_stress"
 	"./build/test_cleanup"
 	"./build/test_timeout"
-	@! grep -RIl $$'\r' --include='Makefile' --include='*.sh' . >/dev/null
+	@! grep -RIl "$$(printf '\r')" --include='Makefile' --include='*.sh' . >/dev/null
 
 check-ci:
 	$(MAKE) clean
@@ -61,6 +61,16 @@ bench-full: all venv
 
 bench-secondary: all venv
 	"$(VENV)/bin/python" "scripts/run_experiments.py" --secondary --resume --output "results/raw.csv"
+
+report: venv
+	"$(VENV)/bin/python" "analysis/make_report.py" --input "results/raw.csv" --output "results"
+	"$(VENV)/bin/python" "analysis/recommend.py" --export-rules --input "results/raw.csv"
+
+docker-build:
+	docker build -t ipc-benchmark-analysis .
+
+docker-quick:
+	docker run --rm -v "$(CURDIR):/work" -w /work ipc-benchmark-analysis make bench-quick
 
 stress:
 	$(MAKE) clean
